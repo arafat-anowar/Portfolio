@@ -9,6 +9,8 @@ import AboutModal from "@/components/modals/AboutModal";
 import ProjectsModal from "@/components/modals/ProjectsModal";
 import JourneyModal from "@/components/modals/JourneyModal";
 import ContactModal from "@/components/modals/ContactModal";
+import DialogueModal from "@/components/game/DialogueModal";
+import MobileControls from "@/components/game/MobileControls";
 import RecruiterView from "@/components/game/RecruiterView";
 
 // Dynamically import Phaser GameContainer with SSR disabled
@@ -27,15 +29,28 @@ const GameContainer = dynamic(
 
 export default function Home() {
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingInfo | null>(null);
+  const [activeNPC, setActiveNPC] = useState<{
+    name: string;
+    role: string;
+    dialogue: string[];
+  } | null>(null);
   const [isRecruiterMode, setIsRecruiterMode] = useState<boolean>(false);
   const [visitedBuildings, setVisitedBuildings] = useState<Set<string>>(new Set());
   const [playerPosition, setPlayerPosition] = useState<PlayerPosition | undefined>();
   const [targetTeleport, setTargetTeleport] = useState<{ x: number; y: number } | null>(null);
   const [showMiniMap, setShowMiniMap] = useState<boolean>(true);
 
+  // Mobile movement state
+  const [mobileVelocity, setMobileVelocity] = useState<{ vx: number; vy: number }>({
+    vx: 0,
+    vy: 0,
+  });
+  const [interactSignal, setInteractSignal] = useState<number>(0);
+
   // Handle building selection (when entering door or clicking on HUD/map)
   const handleBuildingSelect = useCallback((building: BuildingInfo) => {
     setSelectedBuilding(building);
+    setActiveNPC(null);
     setVisitedBuildings((prev) => {
       const next = new Set(prev);
       next.add(building.id);
@@ -45,40 +60,58 @@ export default function Home() {
 
   const handleCloseModal = useCallback(() => {
     setSelectedBuilding(null);
+    setActiveNPC(null);
   }, []);
 
   // Keyboard shortcut listener (ESC to close dialogs, M to toggle map)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" || e.keyCode === 27) {
-        if (selectedBuilding) {
+        if (selectedBuilding || activeNPC) {
           handleCloseModal();
         } else if (isRecruiterMode) {
           setIsRecruiterMode(false);
         }
-      } else if ((e.key === "m" || e.key === "M") && !selectedBuilding && !isRecruiterMode) {
+      } else if (
+        (e.key === "m" || e.key === "M") &&
+        !selectedBuilding &&
+        !activeNPC &&
+        !isRecruiterMode
+      ) {
         setShowMiniMap((prev) => !prev);
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedBuilding, isRecruiterMode, handleCloseModal]);
+  }, [selectedBuilding, activeNPC, isRecruiterMode, handleCloseModal]);
 
   const handleTeleport = (x: number, y: number) => {
     setTargetTeleport({ x, y });
-    // Reset after trigger so subsequent clicks work
     setTimeout(() => setTargetTeleport(null), 100);
   };
+
+  const handleMobileMove = (vx: number, vy: number) => {
+    setMobileVelocity({ vx, vy });
+  };
+
+  const handleMobileInteract = () => {
+    setInteractSignal((prev) => prev + 1);
+  };
+
+  const isAnyModalOpen = !!selectedBuilding || !!activeNPC;
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-[#060b19]">
       {/* 2D RPG Campus Game Engine View */}
       <GameContainer
         onBuildingSelect={handleBuildingSelect}
+        onNPCInteract={setActiveNPC}
         onPlayerPositionChange={setPlayerPosition}
-        isModalOpen={!!selectedBuilding}
+        isModalOpen={isAnyModalOpen}
         targetTeleport={targetTeleport}
+        mobileVelocity={mobileVelocity}
+        interactSignal={interactSignal}
       />
 
       {/* Retro CRT Scanline & Ambient Filter */}
@@ -105,7 +138,20 @@ export default function Home() {
         />
       )}
 
-      {/* Building Modals */}
+      {/* Virtual Mobile Controls (Bottom-Left D-Pad & Bottom-Right Action Button) */}
+      {!isRecruiterMode && !isAnyModalOpen && (
+        <MobileControls
+          onMove={handleMobileMove}
+          onInteract={handleMobileInteract}
+        />
+      )}
+
+      {/* NPC Dialogue Box */}
+      {activeNPC && (
+        <DialogueModal npc={activeNPC} onClose={handleCloseModal} />
+      )}
+
+      {/* Building Portals & Modals */}
       {selectedBuilding?.id === "building-a" && (
         <AboutModal onClose={handleCloseModal} />
       )}

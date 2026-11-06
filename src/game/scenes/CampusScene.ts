@@ -6,6 +6,8 @@
 import * as Phaser from "phaser";
 import { Player } from "../objects/Player";
 import { BuildingZone } from "../objects/BuildingZone";
+import { NPC, NPCData } from "../objects/NPC";
+import { SoundFX } from "../utils/SoundFX";
 import {
   generateCampusMap,
   BUILDINGS,
@@ -30,10 +32,16 @@ export class CampusScene extends Phaser.Scene {
   private escKey!: Phaser.Input.Keyboard.Key;
 
   private buildingZones: BuildingZone[] = [];
+  private npcs: NPC[] = [];
   private activeNearbyBuilding: BuildingInfo | null = null;
+  private activeNearbyNPC: NPC | null = null;
   private callbacks?: GameEventCallbacks;
   private obstaclesGroup!: Phaser.Physics.Arcade.StaticGroup;
   private isInputLocked = false;
+
+  // Mobile / Virtual Controller Support
+  private mobileVx = 0;
+  private mobileVy = 0;
 
   constructor() {
     super("CampusScene");
@@ -54,6 +62,11 @@ export class CampusScene extends Phaser.Scene {
     if (this.player && this.player.body) {
       this.player.setVelocity(0, 0);
     }
+  }
+
+  public setMobileVelocity(vx: number, vy: number): void {
+    this.mobileVx = vx;
+    this.mobileVy = vy;
   }
 
   public create(): void {
@@ -135,9 +148,8 @@ export class CampusScene extends Phaser.Scene {
     // Decorations (Trees, Street Lamps, Benches)
     decorations.forEach((dec) => {
       const sprite = this.add.sprite(dec.x, dec.y, dec.texture);
-      sprite.setDepth(dec.y); // Dynamic depth based on Y coordinate
+      sprite.setDepth(dec.y);
       if (dec.type === "lamp") {
-        // Add ambient warm light pool on ground under street lamps
         const lampGlow = this.add.circle(dec.x, dec.y + 16, 36, 0xffbe53, 0.14);
         lampGlow.setDepth(2);
       }
@@ -160,6 +172,9 @@ export class CampusScene extends Phaser.Scene {
 
     // Interactive Building Trigger Zones
     this.buildingZones = BUILDINGS.map((b) => new BuildingZone(this, b));
+
+    // Spawn Interactive Campus NPCs
+    this.createNPCs();
 
     // Spawn Playable Character: Arafat
     this.player = new Player(this, INITIAL_PLAYER_SPAWN.x, INITIAL_PLAYER_SPAWN.y);
@@ -192,9 +207,7 @@ export class CampusScene extends Phaser.Scene {
 
       // Listen for E key press
       this.interactKey.on("down", () => {
-        if (!this.isInputLocked && this.activeNearbyBuilding && this.callbacks?.onBuildingEnter) {
-          this.callbacks.onBuildingEnter(this.activeNearbyBuilding);
-        }
+        this.triggerInteraction();
       });
     }
 
@@ -203,8 +216,74 @@ export class CampusScene extends Phaser.Scene {
     }
   }
 
+  private createNPCs(): void {
+    const npcConfigs: NPCData[] = [
+      {
+        id: "npc-prof",
+        name: "Dr. Ahmed",
+        role: "CSE Department Mentor",
+        texture: "npc_professor",
+        x: 16 * TILE_SIZE,
+        y: 25 * TILE_SIZE,
+        dialogue: [
+          "Welcome to East West University, Aftabnagar campus!",
+          "I've had the pleasure of observing Arafat's work in our Department of Computer Science & Engineering.",
+          "His dedication to data structures, clean software design, and real-time interactive systems stands out.",
+          "Step into Building A to view his academic profile, or explore Building B for his engineering repositories!",
+        ],
+      },
+      {
+        id: "npc-student",
+        name: "Tahmid",
+        role: "Student Developer",
+        texture: "npc_student",
+        x: 27 * TILE_SIZE,
+        y: 25 * TILE_SIZE,
+        dialogue: [
+          "Hey there, explorer! Welcome to the EWU Central Plaza.",
+          "Arafat and our university team built real-time platforms that took 1st prize at the EWU Tech Carnival hackathon!",
+          "Make sure to visit Building C to check out his hackathon trophies and competitive programming milestones.",
+        ],
+      },
+      {
+        id: "npc-guard",
+        name: "Officer Farhan",
+        role: "Campus Guide",
+        texture: "npc_guard",
+        x: 24 * TILE_SIZE,
+        y: 38 * TILE_SIZE,
+        dialogue: [
+          "Greetings! Welcome to Arafat's Dev World.",
+          "You can navigate around the campus using WASD, Arrow keys, or the on-screen controls on mobile.",
+          "Whenever you approach a building, press [E] to step inside and view that section of Arafat's portfolio!",
+          "Need direct recruiter access without playing? Click 'RECRUITER MODE' on the top bar anytime.",
+        ],
+      },
+    ];
+
+    this.npcs = npcConfigs.map((data) => new NPC(this, data));
+  }
+
+  public triggerInteraction(): void {
+    if (this.isInputLocked) return;
+
+    if (this.activeNearbyNPC && this.callbacks?.onNPCInteract) {
+      this.activeNearbyNPC.triggerDialogue();
+      this.callbacks.onNPCInteract({
+        name: this.activeNearbyNPC.dataInfo.name,
+        role: this.activeNearbyNPC.dataInfo.role,
+        dialogue: this.activeNearbyNPC.dataInfo.dialogue,
+      });
+      return;
+    }
+
+    if (this.activeNearbyBuilding && this.callbacks?.onBuildingEnter) {
+      SoundFX.playDoorOpen();
+      this.callbacks.onBuildingEnter(this.activeNearbyBuilding);
+    }
+  }
+
   private createAtmosphere(width: number, height: number): void {
-    // Subtle nighttime ambient color grading overlay
     const ambient = this.add.rectangle(
       width / 2,
       height / 2,
@@ -220,11 +299,38 @@ export class CampusScene extends Phaser.Scene {
   public update(): void {
     if (!this.player) return;
 
-    if (!this.isInputLocked && this.cursors && this.wasdKeys) {
-      this.player.update(this.cursors, this.wasdKeys);
+    if (!this.isInputLocked) {
+      if (this.mobileVx !== 0 || this.mobileVy !== 0) {
+        // Mobile / Touch virtual input
+        this.player.setVelocity(this.mobileVx, this.mobileVy);
+        const dir =
+          Math.abs(this.mobileVx) > Math.abs(this.mobileVy)
+            ? this.mobileVx > 0
+              ? "right"
+              : "left"
+            : this.mobileVy > 0
+            ? "down"
+            : "up";
+        this.player.anims.play(`player-walk-${dir}`, true);
+        this.player.setDepth(this.player.y);
+      } else if (this.cursors && this.wasdKeys) {
+        this.player.update(this.cursors, this.wasdKeys);
+      } else {
+        this.player.setVelocity(0, 0);
+      }
     } else {
       this.player.setVelocity(0, 0);
     }
+
+    // Check Proximity to NPCs
+    let foundNPC: NPC | null = null;
+    for (const npc of this.npcs) {
+      if (npc.checkProximity(this.player.x, this.player.y)) {
+        foundNPC = npc;
+        break;
+      }
+    }
+    this.activeNearbyNPC = foundNPC;
 
     // Check Proximity to Buildings
     let foundBuilding: BuildingInfo | null = null;
@@ -237,9 +343,7 @@ export class CampusScene extends Phaser.Scene {
 
     if (foundBuilding !== this.activeNearbyBuilding) {
       this.activeNearbyBuilding = foundBuilding;
-      if (foundBuilding && this.callbacks?.onBuildingEnter) {
-        // Optional proximity hook
-      } else if (!foundBuilding && this.callbacks?.onBuildingLeave) {
+      if (!foundBuilding && this.callbacks?.onBuildingLeave) {
         this.callbacks.onBuildingLeave();
       }
     }
@@ -260,6 +364,7 @@ export class CampusScene extends Phaser.Scene {
 
   public teleportPlayer(x: number, y: number): void {
     if (this.player) {
+      SoundFX.playTeleport();
       this.player.setPosition(x, y);
     }
   }

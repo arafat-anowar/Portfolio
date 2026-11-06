@@ -7,16 +7,22 @@ import { CampusScene } from "@/game/scenes/CampusScene";
 
 interface GameContainerProps {
   onBuildingSelect: (building: BuildingInfo) => void;
+  onNPCInteract?: (npc: { name: string; role: string; dialogue: string[] }) => void;
   onPlayerPositionChange?: (pos: PlayerPosition) => void;
   isModalOpen: boolean;
   targetTeleport?: { x: number; y: number } | null;
+  mobileVelocity?: { vx: number; vy: number };
+  interactSignal?: number;
 }
 
 export default function GameContainer({
   onBuildingSelect,
+  onNPCInteract,
   onPlayerPositionChange,
   isModalOpen,
   targetTeleport,
+  mobileVelocity,
+  interactSignal,
 }: GameContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -39,6 +45,11 @@ export default function GameContainer({
         },
         onBuildingLeave: () => {
           // Can handle leave event
+        },
+        onNPCInteract: (npc: { name: string; role: string; dialogue: string[] }) => {
+          if (onNPCInteract) {
+            onNPCInteract(npc);
+          }
         },
         onPlayerMove: (pos: PlayerPosition) => {
           if (onPlayerPositionChange) {
@@ -63,7 +74,7 @@ export default function GameContainer({
         gameRef.current = null;
       }
     };
-  }, [onBuildingSelect, onPlayerPositionChange]);
+  }, [onBuildingSelect, onNPCInteract, onPlayerPositionChange]);
 
   // Lock controls when a modal dialog is open
   useEffect(() => {
@@ -75,7 +86,7 @@ export default function GameContainer({
     }
   }, [isModalOpen]);
 
-  // Teleport player when requested (e.g. from MiniMap click)
+  // Teleport player when requested
   useEffect(() => {
     if (targetTeleport && gameRef.current) {
       const campusScene = gameRef.current.scene.getScene("CampusScene") as CampusScene;
@@ -84,6 +95,26 @@ export default function GameContainer({
       }
     }
   }, [targetTeleport]);
+
+  // Mobile touch velocity update
+  useEffect(() => {
+    if (gameRef.current && mobileVelocity) {
+      const campusScene = gameRef.current.scene.getScene("CampusScene") as CampusScene;
+      if (campusScene && campusScene.setMobileVelocity) {
+        campusScene.setMobileVelocity(mobileVelocity.vx, mobileVelocity.vy);
+      }
+    }
+  }, [mobileVelocity]);
+
+  // Trigger interaction via mobile action button
+  useEffect(() => {
+    if (interactSignal && gameRef.current) {
+      const campusScene = gameRef.current.scene.getScene("CampusScene") as CampusScene;
+      if (campusScene && campusScene.triggerInteraction) {
+        campusScene.triggerInteraction();
+      }
+    }
+  }, [interactSignal]);
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-[#060b19]">

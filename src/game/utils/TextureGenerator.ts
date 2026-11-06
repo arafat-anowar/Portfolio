@@ -13,6 +13,7 @@ export class TextureGenerator {
   public static generateAll(scene: Phaser.Scene): void {
     this.createTileset(scene);
     this.createPlayerSpritesheet(scene);
+    this.createNPCSprites(scene);
     this.createDecorations(scene);
     this.createUIElements(scene);
   }
@@ -649,5 +650,78 @@ export class TextureGenerator {
       scene.textures.remove("key_prompt_e");
     }
     scene.textures.addCanvas("key_prompt_e", markerCanvas);
+  }
+
+  /**
+   * Generates NPC Character Textures
+   */
+  private static createNPCSprites(scene: Phaser.Scene): void {
+    const drawSimpleNPC = (
+      key: string,
+      hairColor: string,
+      coatColor: string,
+      innerColor: string,
+      pantColor: string
+    ) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext("2d")!;
+      ctx.imageSmoothingEnabled = false;
+
+      // Shadow
+      ctx.fillStyle = "rgba(0,0,0,0.4)";
+      ctx.beginPath();
+      ctx.ellipse(16, 29, 6, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Shoes
+      ctx.fillStyle = "#334155";
+      ctx.fillRect(11, 26, 4, 3);
+      ctx.fillRect(17, 26, 4, 3);
+
+      // Pants
+      ctx.fillStyle = pantColor;
+      ctx.fillRect(11, 20, 4, 6);
+      ctx.fillRect(17, 20, 4, 6);
+
+      // Coat / Body
+      ctx.fillStyle = coatColor;
+      ctx.fillRect(10, 12, 12, 9);
+      ctx.fillStyle = innerColor;
+      ctx.fillRect(15, 12, 2, 7);
+
+      // Hands
+      ctx.fillStyle = "#fbcfe8";
+      ctx.fillRect(8, 14, 2, 6);
+      ctx.fillRect(22, 14, 2, 6);
+
+      // Face
+      ctx.fillStyle = "#fbcfe8";
+      ctx.fillRect(11, 5, 10, 8);
+
+      // Hair
+      ctx.fillStyle = hairColor;
+      ctx.fillRect(10, 3, 12, 5);
+      ctx.fillRect(9, 5, 2, 4);
+      ctx.fillRect(21, 5, 2, 4);
+
+      // Glasses / Eyes
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(13, 8, 2, 2);
+      ctx.fillRect(18, 8, 2, 2);
+
+      if (scene.textures.exists(key)) {
+        scene.textures.remove(key);
+      }
+      scene.textures.addCanvas(key, canvas);
+    };
+
+    // Professor (Grey hair, brown tweed coat, beige pants)
+    drawSimpleNPC("npc_professor", "#94a3b8", "#78350f", "#fef3c7", "#475569");
+    // Fellow Student (Casual green hoodie, black jeans)
+    drawSimpleNPC("npc_student", "#1c1917", "#15803d", "#ffffff", "#0f172a");
+    // Campus Security (Dark navy blazer, white shirt, grey trousers)
+    drawSimpleNPC("npc_guard", "#292524", "#1e3a8a", "#f8fafc", "#334155");
   }
 }
